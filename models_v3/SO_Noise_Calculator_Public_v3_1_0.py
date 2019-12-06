@@ -1,7 +1,7 @@
 """Simons Observatory LAT Noise Model
 
-THIS IS A CANDIDATE FOR RELEASE AS V3.1.  Remove this text, and CAND
-in the filename, when finalizing for release.
+This is release v3.1.0.  It is an update to the LAT noise model only.
+v3.0.4 is still the most current SAT noise model.
 
 This code includes two SO LAT noise models:
 
