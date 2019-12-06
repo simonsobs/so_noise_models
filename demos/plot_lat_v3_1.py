@@ -48,7 +48,7 @@ print("white noise levels: "  , WN_levels, "[uK-arcmin]")
 target = str(lat.__class__.__name__).split('.')[-1]
 
 ## plot the temperature noise curves
-plt.clf()
+plt.figure()
 for i in range(N_bands):
     plt.loglog(ell,N_ell_LA_T[i], label='%i GHz (%s)' % (bands[i], dset_label),
                color=colors[i], ls='-', lw=2.)
@@ -67,10 +67,9 @@ plt.xlim(100,10000)
 plt.legend(loc='lower left', ncol=2, fontsize=8)
 plt.grid()
 plt.savefig('%s_mode%i_fsky%.2f_LAT_T.%s' % (target, mode, fsky, suffix))
-plt.close()
 
 ## plot the polarization noise curves
-plt.clf()
+plt.figure()
 for i in range(N_bands):
     plt.loglog(ell,N_ell_LA_P[i], label='%i GHz (%s)' % (bands[i], dset_label),
                color=colors[i], ls='-', lw=2.)
@@ -89,7 +88,6 @@ plt.xlim(100,10000)
 plt.legend(loc='upper left', ncol=2, fontsize=9)
 plt.grid()
 plt.savefig('%s_mode%i_fsky%.2f_LAT_P.%s' % (target, mode, fsky, suffix))
-plt.close()
 ####################################################################
 ####################################################################
 
