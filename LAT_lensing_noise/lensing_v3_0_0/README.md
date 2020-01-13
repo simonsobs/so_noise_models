@@ -11,13 +11,12 @@ These noise spectra are for lensing convergence; no factors of ell or 2pi.
 i.e. these can be plotted directly against C_ell_kappa_kappa.
 
 Files:
-Apr17_mv_nlkk_{deproj0,deproj1,deproj2}_{SENS0,SENS1,SENS2}_fsky_{04000,08000,16000}_iterOn.csv
+Apr17_mv_nlkk_{deproj0,deproj1,deproj2}_{SENS1,SENS2}_fsky_{04000,08000,16000}_iterOn.csv
 
 deproj0 -- no deprojection of any foregrounds (baseline)
 deproj1 -- tSZ deprojected
 deproj2 -- fiducial CIB SED deprojected
 
-SENS0 -- threshold sensitivity
 SENS1 -- baseline sensitivity (baseline)
 SENS2 -- goal sensitivity
 
