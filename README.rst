@@ -20,6 +20,9 @@ The repository is organized as follows:
   ``demos/`` for typical usage patterns.
 - ``demos/``: Code that demonstrates usage of the noise models, such
   as by producing noise curve plots.
+- ``LAT_comp_sep_noise/`` - Effective noise power spectra for SO LAT
+  component-separated CMB T, E, B, and Compton-y maps.  See dedicated
+  README within.
 
 The ``so_models_v3`` package is pure python and thus can be imported
 from the root level of this repository.  But you might want to install
