@@ -34,7 +34,7 @@ print("beam sizes: "  , survey.get_beams(), "[arcmin]")
 N_bands = len(bands)
 
 #ell, N_ell_T_full,N_ell_P_full = survey.get_noise_curves(
-ell, N_ell_T_full,N_ell_P_full = survey.get_noise_curves(
+ell, N_ell_T_full, N_ell_P_full = survey.get_noise_curves(
     fsky, ellmax, 1, full_covar=False, deconv_beam=True)
 
 WN_levels = survey.get_white_noise(fsky)**.5

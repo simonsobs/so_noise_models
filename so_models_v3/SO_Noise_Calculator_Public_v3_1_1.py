@@ -1,6 +1,15 @@
 """Simons Observatory LAT Noise Model
 
-FIX README PLACEHOLDER
+This is release v3.1.1.
+
+
+Version 3.1.0 brings an update to the LAT T noise model, relative to
+v3.0.  Version 3.1.1 brings the SAT noise model into the same file and
+framework, for convenience (but the SAT noise is the same as for 3.0).
+
+This code includes one SO SAT noise model:
+
+  SOSatV3point1
 
 This code includes two SO LAT noise models:
 
@@ -18,8 +27,8 @@ the SO forecasts paper, but with some functional changes:
 - Object-oriented organization to make it easier to swap in different
   noise models for the same calculation.
 - Beam deconvolution is optional.
-- Plotting code is confined to __main__ block, so not run on simple
-  import.
+- Plotting code is not included, and instead found separately in this
+  repo.
 
 """
 
@@ -75,12 +84,35 @@ def get_atmosphere_C(freqs, version=1, el=None):
     return np.array([data[f] * el_correction**2 for f in freqs])
 
 
-"""See lower for subclasses of SOLatType -- instrument specific
+"""See lower for subclasses of SOTel -- instrument specific
 parameters are configured in __init__.  """
 
-class SOLatType:
+
+class SOTel:
+    """Base class for SO SAT and LAT noise models.  The sub-class
+    constructors should set up all the internal variables and then
+    call precompute().  Then the noise levels can be obtained with
+    get_white_noise / get_noise_curves.
+
+    """
+    # Switches that tell get_noise_curves what to return.
+    has_T = False
+    has_P = False
+
+    # In-tube, cross-band correlation coefficients for red ("atmos").
+    Tatmos_band_corr = 0.
+    Patmos_band_corr = 0.
+
+    # Factor by which to attenuate LAT atmospheric power, given FOV
+    # relative to ACT?
+    Tatmos_FOV_mod = 0.5
+
     def __init__(self, *args, **kwargs):
         raise RuntimeError('You should subclass this.')
+
+    @property
+    def n_bands(self):
+        return len(self.bands) if self.bands is not None else 0
 
     def get_bands(self):
         return self.bands.copy()
@@ -120,25 +152,26 @@ class SOLatType:
 
         # Special for atmospheric noise model.
         self.Tatmos_C = get_atmosphere_C(self.bands, self.atm_version,
-                                         el=self.el) * self.FOV_mod
+                                         el=self.el) * self.Tatmos_FOV_mod
         self.Tatmos_ell = 1000. + np.zeros(self.n_bands)
         self.Tatmos_alpha = -3.5 + np.zeros(self.n_bands)
 
         # Compute covariant weight matrix (atmosphere parameters).
         cov_weight = np.zeros((self.n_bands,self.n_bands))
         pcov_weight = np.zeros((self.n_bands,self.n_bands))
-        atm_rho = 0.9
         for (tube_name, tube_count) in N_tubes:
             # Get the list of coupled bands; e.g. [1,2] for MF.
             nonz = self.tube_configs[tube_name].nonzero()[0]
             for i in nonz:
                 for j in nonz:
-                    w = {True: 1., False: atm_rho}[i==j]
                     assert(cov_weight[i,j] == 0.) # Can't do overlapping
                                                   # tubes without weights.
-                    cov_weight[i,j] += tube_count * N_tels / ( w * (
-                        self.Tatmos_C[i] * self.Tatmos_C[j])**.5 )
-                    pcov_weight[i,j] = w
+                    T_corr = {True: 1., False: self.Tatmos_band_corr}[i==j]
+                    cov_weight[i,j] += ( tube_count * N_tels /
+                                         (T_corr *
+                                          (self.Tatmos_C[i] * self.Tatmos_C[j])**.5) )
+                    P_corr = {True: 1., False: self.Patmos_band_corr}[i==j]
+                    pcov_weight[i,j] = P_corr
 
         # Reciprocate non-zero elements.
         s = (cov_weight!=0)
@@ -146,9 +179,6 @@ class SOLatType:
         self.Tatmos_cov[s] = 1./cov_weight[s]
 
         # Polarization is simpler...
-        self.Patmos_ell = 700. + np.zeros(self.n_bands)
-        self.Patmos_alpha = -1.4 + np.zeros(self.n_bands)
-        
         self.Patmos_cov = pcov_weight
 
     def get_survey_time(self):
@@ -199,13 +229,16 @@ class SOLatType:
             T_noise = T_noise[ii,ii]
             P_noise = P_noise[ii,ii]
 
-        sr_per_arcmin2 = (np.pi/180/60)**2
-        return (ell,
-                T_noise * self.get_survey_spread(f_sky, units='sr'),
-                P_noise * self.get_survey_spread(f_sky, units='sr'))
+        T_out, P_out = None, None
+        if self.has_T:
+            T_out = T_noise * self.get_survey_spread(f_sky, units='sr')
+        if self.has_P:
+            P_out = P_noise * self.get_survey_spread(f_sky, units='sr')
+
+        return (ell, T_out, P_out)
 
 
-""" Elevation-dependent noise model is parametrizerd below.  Detector
+""" Elevation-dependent noise model for LAT is captured below.  Detector
 white noise is determined by a fixed, instrumental component as well
 as a contribution from atmospheric loading, which is should scale
 roughly with 1/sin(elevation).  The 'coeffs' below give coefficents A,
@@ -256,12 +289,16 @@ SO_el_noise_func_params = {
 }
 
 
-class SOLatV3(SOLatType):
+class SOLatV3(SOTel):
+    has_T = True
+    has_P = True
     atm_version = 0
+    Tatmos_band_corr = 0.9
+    Patmos_band_corr = 0.9
+
     def __init__(self, sensitivity_mode=None, N_tubes=None, survey_years=5.,
                  survey_efficiency = 0.2*0.85, el=None):
         # Define the instrument.
-        self.n_bands = 6
         self.bands = np.array([
             27., 39., 93., 145., 225., 280.])
         self.beams = np.array([
@@ -304,15 +341,6 @@ class SOLatV3(SOLatType):
             },
         }[sensitivity_mode]
 
-        self.el_noise_params = SO_el_noise_func_params[sensitivity_mode]
-        
-        # Save the elevation request.
-        self.el = el
-        
-        # Factor by which to attenuate atmospheric power, given FOV
-        # relative to ACT?
-        self.FOV_mod = 0.5
-
         # The reference tube config.
         ref_tubes = [('LF', 1), ('MF', 4), ('UHF', 2)]
 
@@ -321,23 +349,42 @@ class SOLatV3(SOLatType):
         else:
             N_tubes = [(b,x) for (b,n),x in zip(ref_tubes, N_tubes)]
             
+        ##
+        ## T noise
+        ##
+
+        # Elevation stuff
+        self.el_noise_params = SO_el_noise_func_params[sensitivity_mode]
+        self.el = el
+
+        ##
+        ## P noise
+        ##
+        # "atmos" just means low-ell here.  We do not claim it
+        # originates from atmospheric sources.
+        self.Patmos_ell = 700. + np.zeros(self.n_bands)
+        self.Patmos_alpha = -1.4 + np.zeros(self.n_bands)
+
+        # Do general computations.
         self.precompute(N_tubes)
 
-    
+
 class SOLatV3point1(SOLatV3):
     atm_version = 1
 
 
 # SAT support
 
-class SOSatV3point1(SOLatType):
+class SOSatV3point1(SOTel):
+    has_T = False
+    has_P = True
     atm_version = 1
+
     def __init__(self, sensitivity_mode=None, N_tubes=None,
                  survey_years=5.,
                  survey_efficiency = 0.2*0.85, el=None,
                  one_over_f_mode=0):
         # Define the instrument.
-        self.n_bands = 6
         self.bands = np.array([
             27., 39., 93., 145., 225., 280.])
         self.beams = np.array([
@@ -380,15 +427,9 @@ class SOSatV3point1(SOLatType):
             },
         }[sensitivity_mode]
 
-        self.el_noise_params = SO_el_noise_func_params[sensitivity_mode]
-        
         # Save the elevation request.
         assert(el is None)  # Sorry, no SAT elevation function!
         self.el = el
-        
-        # Factor by which to attenuate atmospheric power, given FOV
-        # relative to ACT?
-        self.FOV_mod = 0.5
 
         # The reference tube config.
         ref_tubes = [('LF', .4), ('MF', 1.6), ('UHF', 1)]
@@ -398,46 +439,23 @@ class SOSatV3point1(SOLatType):
         else:
             N_tubes = [(b,x) for (b,n),x in zip(ref_tubes, N_tubes)]
             
-        # Call standard precomp...
-        self.precompute(N_tubes)
-        # But re-wire the P red noise...
+        ##
+        ## T noise
+        ##
+        # This model does not describe the T noise.
+
+        ##
+        ## P noise
+        ##
+        # "atmos" just means low-ell here.  We do not claim it
+        # originates from atmospheric sources.
         self.Patmos_alpha = np.array([-2.4,-2.4,-2.5,-3,-3,-3])
         if one_over_f_mode == 0:
             self.Patmos_ell = np.array([30.,30,50,50,70,100])
         elif one_over_f_mode == 1:
             self.Patmos_ell = np.array([15.,15,25,25,35,40])
-        self.Patmos_cov = np.diag(np.diag(self.Patmos_cov))
-        
-    def get_noise_curves(self, f_sky, ell_max, delta_ell, deconv_beam=True,
-                         full_covar=False):
-        # Modified from the parent class to remove all the T stuff.
-        assert(not full_covar)  # Sorry, no covariance declared for SAT.
+        else:
+            raise ValueError('Invalid one_over_f_mode')
 
-        ell = np.arange(2, ell_max, delta_ell)
-        W = self.band_sens**2
-
-        # P noise is tied directly to the white noise level.
-        P_low_noise = (2*W[:,None]) * (ell / self.Patmos_ell[:,None])**self.Patmos_alpha[:,None]
-        P_noise = (self.Patmos_cov[:,:,None] *
-                   (P_low_noise[:,None,:] * P_low_noise[None,:,:])**.5)
-
-        # Add in white noise on the diagonal.
-        for i in range(len(W)):
-            P_noise[i,i] += W[i] * 2
-
-        # Deconvolve beams.
-        if deconv_beam:
-            beam_sig_rad = self.get_beams() * np.pi/180/60 / (8.*np.log(2))**0.5
-            beams = np.exp(-0.5 * ell*(ell+1) * beam_sig_rad[:,None]**2)
-            P_noise /= (beams[:,None,:] * beams[None,:,:])
-
-        # Diagonal only?
-        if not full_covar:
-            ii = range(self.n_bands)
-            P_noise = P_noise[ii,ii]
-
-        sr_per_arcmin2 = (np.pi/180/60)**2
-        return (ell,
-                None,
-                P_noise * self.get_survey_spread(f_sky, units='sr'))
-
+        # Do general computations.
+        self.precompute(N_tubes)
