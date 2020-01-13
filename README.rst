@@ -23,6 +23,9 @@ The repository is organized as follows:
 - ``LAT_comp_sep_noise/`` - Effective noise power spectra for SO LAT
   component-separated CMB T, E, B, and Compton-y maps.  See dedicated
   README within.
+- ``LAT_lensing_noise/`` - Lensing noise curves from SO LAT
+  component-separated CMB T, E, B maps.  See dedicated
+  README files within.
 
 The ``so_models_v3`` package is pure python and thus can be imported
 from the root level of this repository.  But you might want to install
