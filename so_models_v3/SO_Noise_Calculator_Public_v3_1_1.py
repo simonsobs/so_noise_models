@@ -36,14 +36,29 @@ from __future__ import print_function
 
 import numpy as np
 
-def get_atmosphere_C(freqs, version=1, el=None):
-    """
-    Returns atmospheric noise power at ell=1000, for an ACTPol optics
-    tube.  In units of [uK^2 sec].  This only works for a few special
-    frequencies.
+def get_atmosphere_params(freqs, version=1, el=None):
+    """Returns atmospheric noise power parameters, for an ACTPol optics
+    tube.
 
-    Basic model assumes el=50.  A simple rescaling (proportional to
-    csc(el)) is applied for other values of el.
+    Arguments:
+
+      freqs: array of frequencies (in GHz) to process.  This function only
+        handles the standard SO frequency values.
+      version: version of the C factors to return.  See below.
+      el: elevation angle, in degrees.  Default is 50.
+
+    Returns (C_array, alpha_array), where each array has the same
+    shape as freqs.  The red noise contribution to each band is then:
+
+          N_red(ell) =   C * (ell/1000)^alpha
+
+    with units of [uK^2 sec].
+
+    The model is naturally calibrated for boresight elevation el = 50
+    degrees.  A simple rescaling (proportional to csc(el)) is applied
+    for other values of el.
+
+    In the present model, alpha=-3.5 always.
 
     version=0: This atmospheric model was used in SO V3 forecasts but
     contains an error.
@@ -81,7 +96,8 @@ def get_atmosphere_C(freqs, version=1, el=None):
         data = {}
         for b,C in zip(data_bands, data_C):
             data[b] = C
-    return np.array([data[f] * el_correction**2 for f in freqs])
+    return (np.array([data[f] * el_correction**2 for f in freqs]),
+            np.array([-3.5 for f in freqs]))
 
 def rolloff(ell, ell_off=None, alpha=-4, patience=2.):
     """Get a transfer function T(ell) to roll off red noise at ell <
@@ -183,10 +199,10 @@ class SOTel:
         self.band_sens[s] = band_weights[s]**-0.5
 
         # Special for atmospheric noise model.
-        self.Tatmos_C = get_atmosphere_C(self.bands, self.atm_version,
-                                         el=self.el) * self.Tatmos_FOV_mod
+        C, alpha = get_atmosphere_params(self.bands, self.atm_version, el=self.el)
+        self.Tatmos_C = C * self.Tatmos_FOV_mod
+        self.Tatmos_alpha = alpha
         self.Tatmos_ell = 1000. + np.zeros(self.n_bands)
-        self.Tatmos_alpha = -3.5 + np.zeros(self.n_bands)
 
         # Compute covariant weight matrix (atmosphere parameters).
         cov_weight = np.zeros((self.n_bands,self.n_bands))
@@ -214,10 +230,20 @@ class SOTel:
         self.Patmos_cov = pcov_weight
 
     def get_survey_time(self):
+        """Returns the effective survey time (survey_years * efficiency), in
+        seconds.
+
+        """
         t = self.survey_years * 365.25 * 86400.    ## convert years to seconds
         return t * self.survey_efficiency
 
     def get_survey_spread(self, f_sky, units='arcmin2'):
+        """Returns the dilution factor that converts array instrument
+        sensitivity (in units uK^2 sec) to map white noise level
+        (units uK^2 arcmin^2).  Units are arcmin^2 / second (unless
+        units='sr' is set)
+
+        """
         # Factor that converts uK^2 sec -> uK^2 arcmin^2.
         A = f_sky * 4*np.pi
         if units == 'arcmin2':
@@ -227,10 +253,41 @@ class SOTel:
         return A / self.get_survey_time()
 
     def get_white_noise(self, f_sky, units='arcmin2'):
+        """Returns the survey white noise level, in temperature, for each
+        band, in uK^2 arcmin2, for the specified f_sky (0 < f_sky <= 1).
+
+        Pass units='sr' to get uK^2 steradian units.
+
+        """
         return self.band_sens**2 * self.get_survey_spread(f_sky, units=units)
 
     def get_noise_curves(self, f_sky, ell_max, delta_ell, deconv_beam=True,
                          full_covar=False, rolloff_ell=None):
+        """Get the noise curves N(ell) for all bands.
+
+        The ell vector is determined by ell_max and delta_ell: ell =
+        range(2, ell_max, delta_ell).
+
+        The f_sky is the area of the survey in units of a full sky; (0
+        < f_sky <= 1).
+
+        Returns (ell, T_noise, P_noise).  If a model does not describe
+        one of these spectra (has_T == False, or has_P == False), the
+        corresponding spectrum will return as None.  Otherwise, the
+        shape of T_noise and P_noise will be (n_bands, n_ell) if
+        full_covar is False, and (n_bands, n_bands, n_ell) if
+        full_covar is True.
+
+        If deconv_beam is True, then the beam transfer functions are
+        deconvolved, to give the effective noise level relative to a
+        signal at each ell.
+
+        If rolloff_ell is specified, a transfer function is applied to
+        reduce red noise below this cutoff.  The transfer function at
+        ell > rolloff_ell will be 1.  See code if you care about what
+        happens below that.
+
+        """
         ell = np.arange(2, ell_max, delta_ell)
         W = self.band_sens**2
 
@@ -336,6 +393,28 @@ class SOLatV3(SOTel):
 
     def __init__(self, sensitivity_mode=None, N_tubes=None, survey_years=5.,
                  survey_efficiency = 0.2*0.85, el=None):
+        """Arguments:
+
+          sensitivity_mode (int or string): Should be 'threshold',
+            'baseline', or 'goal'.  Alternately you can pass 0, 1, or
+            2.
+
+          N_tubes: A list of tuples giving the survey-averaged number
+            of each LAT tube in operation.  For example, the default
+            is [('LF', 1), ('MF', 4), ('UHF', 2)], populating a total
+            of 7 tubes in this LAT.  Fractional tubes are acceptable
+            (imagine a tube were swapped out part way through the
+            survey).
+
+          survey_years: Total calendar years that the survey operates.
+
+          survey_efficiency: Fraction of calendar time that may be
+            used to compute map depth.
+
+          el: Elevation, in degrees.  This affects white noise and red
+            noise, through separate scalings.
+
+        """
         # Define the instrument.
         self.bands = np.array([
             27., 39., 93., 145., 225., 280.])
@@ -359,7 +438,10 @@ class SOLatV3(SOTel):
         self.sensitivity_mode = sensitivity_mode
         
         # Sensitivities of each kind of optics tube, in uK rtsec, by
-        # band.  0 represents 0 weight, not 0 noise...
+        # band.  0 represents 0 weight, not 0 noise!  Note the weird
+        # scalings for MF (4**.5) and UHF (2**.5) are to convert to
+        # per-tube values from the reference design sensitivity values
+        # that included 4 MF and 2 UHF tubes.
         nar = np.array
         self.tube_configs = {
             'threshold': {
@@ -422,6 +504,30 @@ class SOSatV3point1(SOTel):
                  survey_years=5.,
                  survey_efficiency = 0.2*0.85, el=None,
                  one_over_f_mode=0):
+        """Arguments:
+
+          sensitivity_mode (int or string): Should be 'threshold',
+            'baseline', or 'goal'.  Alternately you can pass 0, 1, or
+            2.
+
+          N_tubes: A list of tuples giving the survey-averaged number
+            of each SAT type in operation.  For example, the default
+            is [('LF', .4), ('MF', 1.6), ('UHF', 1)], which can be
+            interpreted as 3 total instruments; 1 UHF instrument, 1 MF
+            instrument, and one instrument that spends 60% of the
+            survey as an MF and 40% of the survey as an LF."
+
+          survey_years: Total calendar years that the survey operates.
+
+          survey_efficiency: Fraction of calendar time that may be
+            used to compute map depth.
+
+          el: Elevation, in degrees.  The present SAT model does not
+            support this parameter.
+
+          one_over_f_mode: 0 or 1 to select 'pessimistic' or
+            'optimistic' red-noise behavior, respectively.
+        """
         # Define the instrument.
         self.bands = np.array([
             27., 39., 93., 145., 225., 280.])
@@ -445,7 +551,10 @@ class SOSatV3point1(SOTel):
         self.sensitivity_mode = sensitivity_mode
         
         # Sensitivities of each kind of optics tube, in uK rtsec, by
-        # band.  0 represents 0 weight, not 0 noise...
+        # band.  0 represents 0 weight, not 0 noise!  Note the weird
+        # scaling for MF (2**.5) is to convert to per-tube values from
+        # the reference design sensitivity values that included 2 MF
+        # instruments.
         nar = np.array
         self.tube_configs = {
             'threshold': {
