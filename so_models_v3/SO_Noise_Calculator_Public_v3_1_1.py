@@ -105,19 +105,16 @@ def rolloff(ell, ell_off=None, alpha=-4, patience=2.):
     T(ell>=ell_off) = 1.  For T(ell<ell_off) will roll off smoothly,
     approaching T(ell) \propto ell^-alpha.  The speed at which the
     transition to the full power-law occurs is set by "patience";
-    patience is the maximum allowed value of:
+    patience (> 1) is the maximum allowed value of:
 
                        T(ell) * ell**alpha
                  -----------------------------
                   T(ell_off) * ell_off**alpha
 
-    I.e, supposing you were fighting an ell**alpha spectrum, how much
-    additional rise in power can you handle in thye transition?
-
-    to the maximum value is the factor by which an ell**alpha spectrum
-    is permitted to rise off quickly enough that an ell^alpha spectrum
-    times this transfer function will assymptotically approach
-    2*(ell_off^alpha).
+    I.e, supposing you were fighting an ell**alpha spectrum, the
+    roll-off in T(ell) will be applied aggressively enough that
+    T(ell)*ell**alpha does not rise above "patience" times its value
+    at ell_off.
 
     """
     if ell_off is None or ell_off <= 0:
