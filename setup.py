@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(name='so_noise_models',
-      version='3.1.0',
+      version='3.1.1',
       description='Simons Observatory N(ell) noise models for public release',
       author='Simons Observatory Collaboration',
       author_email='so_tac@simonsobservatory.org',
