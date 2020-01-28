@@ -10,7 +10,19 @@ available here, to supplement published projections and simulations.
 This main home of the repository is:
 https://github.com/simonsobs/so_noise_models.
 
-The repository is organized as follows:
+The noise model was originally described and applied in the
+publication:
+
+  Simons Observatory Collaboration.  "The Simons Observatory: science
+  goals and forecasts".  JCAP 1902 (2019) 056.  arxiv:1808.07455
+
+The paper may be found at the following links:
+
+- https://dx.doi.org/10.1088/1475-7516/2019/02/056
+- https://arxiv.org/abs/1808.07445
+
+
+This repository is organized as follows:
 
 - ``so_models_v3/``: Python 3 package providing the noise model code
   used in publications and publicly released simulations.  This
