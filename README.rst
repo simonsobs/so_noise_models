@@ -21,6 +21,11 @@ The paper may be found at the following links:
 - https://dx.doi.org/10.1088/1475-7516/2019/02/056
 - https://arxiv.org/abs/1808.07445
 
+Note that only code and results marked with version code *v3.0.0* will
+correspond exactly to the results shown in the paper.  For the LAT
+component-separated noise spectra (LAT_comp_sep_noise/v3.1.0/), this
+repository contains only the results for the *v3.1.0* noise model.
+The v3.1.x model incorporates a fix to the low-ell noise.
 
 This repository is organized as follows:
 
